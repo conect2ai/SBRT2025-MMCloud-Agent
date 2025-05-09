@@ -8,7 +8,7 @@
 
 # Arquitetura Embarcada com TinyML e Modelos Linguísticos para Monitoramento Veicular Inteligente
 
-### ✍🏾Authors: [Rejanio Moraes](https://github.com/Rejanio), [Morsinaldo Medeiros](https://github.com/Morsinaldo), [Fellipe Milomem](https://github.com/Milomem), [Marianne Diniz](https://github.com/MarianneDiniz), [Ivanovitch Silva](https://github.com/ivanovitchm)
+### ✍🏾Autores: [Rejanio Moraes](https://github.com/Rejanio), [Morsinaldo Medeiros](https://github.com/Morsinaldo), [Fellipe Milomem](https://github.com/Milomem), [Marianne Diniz](https://github.com/MarianneDiniz), [Ivanovitch Silva](https://github.com/ivanovitchm)
 
 ## 1. Resumo
 
