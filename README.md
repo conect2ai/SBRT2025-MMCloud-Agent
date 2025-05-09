@@ -46,8 +46,6 @@ Complementar, foi integrado ao algoritmo uma base de dados da Polícia Rodoviár
  - tests/                       - Scripts de teste do projeto
  - websocket_obd_rasp.py        - WebSocket para comunicação OBD no Raspberry Pi
 
-Aqui vai uma versão revisada e organizada da seção Como executar? 🚀, incorporando o download do modelo, as especificações do Raspberry Pi 5 (8GB) e os detalhes das ligações baseados nas imagens que você enviou:
-
 ## Como executar? 🚀
 
 ### 1️⃣ Clone este repositório
