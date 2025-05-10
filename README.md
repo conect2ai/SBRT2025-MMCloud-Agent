@@ -67,47 +67,197 @@ https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
 ```
 Salve o arquivo na pasta `models/` do repositório.
 
-4️⃣ Executando os notebooks
-
-Abra os arquivos .ipynb usando Jupyter Notebook ou JupyterLab e execute as células conforme indicado em cada seção.
 
 ⸻
 
-Executando no Raspberry Pi 5
+### Executando no Raspberry Pi 5
 
-📍 Especificações do hardware
+📍 **Especificações do hardware**
 
--	Dispositivo: Raspberry Pi 5
--	Memória RAM: 8 GB
--   Cartão SD com pelo menos 64 GB (Recomenda-se 128 GB)
--	Sistema operacional recomendado: Raspberry Pi OS (64-bit)
+* Dispositivo: **Raspberry Pi 5**
+* Memória RAM: **8 GB**
+* Cartão SD: **mínimo 64 GB (recomenda-se 128 GB)**
+* Sistema operacional recomendado: **Raspberry Pi OS (64-bit)**
 
-📦 Complementos utilizados
+📦 **Complementos utilizados**
 
--	Módulo GPS GT-U7
--	Acelerômetro MPU6050
+* Módulo **GPS GT-U7**
+* Acelerômetro **MPU6050**
 
-🔌 Ligações no Raspberry Pi 5
+---
+
+### 🔌 Ligações no Raspberry Pi 5
 
 <p align="center">
   <img width="800" src="./figures/raspberry_pinout.jpg" />
 </p> 
 
-MPU6050 → (I2C)
--	VCC → 3.3V (pino 1) ou 5V (pino 2 ou 4) → verifique na placa GY-521
--	GND → GND (pino 6, 9, 14, 20, 25, 30, 34 ou 39)
--	SDA → GPIO 2 (pino 3)
--	SCL → GPIO 3 (pino 5)
+As ligações foram feitas utilizando **jumpers fêmea-fêmea de Arduino**, conforme descrito abaixo:
 
-GPS GT-U7 (usando UART)
--	VCC → 3.3V ou 5V (pino 1, 2 ou 4, dependendo do módulo)
--	GND → GND (pino 6, 9, 14, 20, 25, 30, 34 ou 39)
--	TX (do GPS) → GPIO 15 (RXD, pino 10)
--	RX (do GPS) → GPIO 14 (TXD, pino 8)
--	Taxa de transmissão → 9600 bps
+**MPU6050 → (I2C)**
+
+* VCC → 3.3V (pino 1) ou 5V (pino 2 ou 4) → verifique na placa GY-521
+* GND → GND (pino 6, 9, 14, 20, 25, 30, 34 ou 39)
+* SDA → GPIO 2 (pino 3)
+* SCL → GPIO 3 (pino 5)
+
+**GPS GT-U7 (usando UART)**
+
+* VCC → 3.3V ou 5V (pino 1, 2 ou 4, dependendo do módulo)
+* GND → GND (pino 6, 9, 14, 20, 25, 30, 34 ou 39)
+* TX (do GPS) → GPIO 15 (RXD, pino 10)
+* RX (do GPS) → GPIO 14 (TXD, pino 8)
+* Taxa de transmissão → 9600 bps
+
+---
+
+### ⚙️ Configurações no Raspberry Pi
+
+1️⃣ **Habilitar I2C (para o MPU6050)**
+Execute:
+
+```bash
+sudo raspi-config
+```
+
+Navegue para:
+
+```
+3 – Interface Options → I4 I2C → Yes
+```
+
+2️⃣ **Habilitar UART (para o GPS GT-U7)**
+Ainda no `raspi-config`:
+
+```
+3 – Interface Options → I6 Serial Port → 
+Would you like a login shell to be accessible over serial? → No
+Would you like the serial port hardware to be enabled? → Yes
+```
+
+3️⃣ **Instalar pacotes necessários**
+
+```bash
+sudo apt update
+sudo apt upgrade
+sudo apt install pps-tools gpsd gpsd-clients chrony i2c-tools python3-smbus
+```
+
+4️⃣ **Configurar arquivos**
+
+* No terminal, execute os seguintes comandos para editar o arquivo `/boot/firmware/config.txt`:
+
+```bash
+sudo bash -c "echo '# the next 3 lines are for GPS PPS signals' >> /boot/firmware/config.txt"
+sudo bash -c "echo 'dtoverlay=pps-gpio,gpiopin=18' >> /boot/firmware/config.txt"
+sudo bash -c "echo 'enable_uart=1' >> /boot/firmware/config.txt"
+sudo bash -c "echo 'init_uart_baud=9600' >> /boot/firmware/config.txt"
+```
+
+* Depois disso, execute o seguinte comandos para editar o arquivo `/etc/modules`:
+
+```
+sudo bash -c "echo 'pps-gpio' >> /etc/modules"
+```
+
+5️⃣ **Reinicie o Raspberry Pi**
+
+```bash
+sudo reboot
+```
+
+### 🛰️ Testar o GPS manualmente (opcional, mas útil)
+
+Use os comandos abaixo para controlar e testar o GPS no Raspberry Pi. Eles ajudam a verificar se o dispositivo está enviando dados corretamente antes de rodar sua aplicação principal.
+
+```bash
+sudo systemctl stop gpsd
+````
+
+➡️ Para o serviço `gpsd` que pode estar rodando automaticamente em segundo plano, liberando a porta serial.
+
+```bash
+sudo systemctl stop gpsd.socket
+```
+
+➡️ Para o socket do `gpsd`, garantindo que nenhum processo esteja ocupando a comunicação com o GPS.
+
+```bash
+sudo gpsd /dev/ttyAMA0 -F /var/run/gpsd.sock
+```
+
+➡️ Inicia o daemon `gpsd` manualmente, especificando o dispositivo serial (`/dev/ttyAMA0`) e criando o socket em `/var/run/gpsd.sock` para os clientes se conectarem.
+
+```bash
+cgps -s
+```
+
+➡️ Abre uma interface em terminal que mostra as informações brutas do GPS, como latitude, longitude, altitude, número de satélites, velocidade, etc.
+
+```bash
+gpsmon /dev/ttyAMA0
+```
+
+➡️ Abre um monitor detalhado para ver os dados NMEA brutos vindos diretamente do GPS e monitorar pacotes em tempo real.
 
 
-🚀 Passo final
+### 🔧 Conexão Bluetooth com o OBD-II
+
+Além do GPS e do acelerômetro, o projeto utiliza conexão Bluetooth para coletar dados do veículo via OBD-II. Para isso, siga os passos abaixo:
+
+1️⃣ **Pareie o adaptador OBD-II com o Raspberry Pi**
+
+No Raspberry Pi, execute:
+
+```bash
+bluetoothctl
+```
+
+Dentro do prompt:
+
+```
+power on
+agent on
+scan on
+```
+
+Quando o dispositivo OBD-II aparecer (ex.: `OBDII 00:1D:A5:68:98:8B`), conecte:
+
+```
+pair 00:1D:A5:68:98:8B
+connect 00:1D:A5:68:98:8B
+trust 00:1D:A5:68:98:8B
+exit
+```
+
+2️⃣ **Mapeie a porta serial Bluetooth**
+
+Após parear, o dispositivo normalmente aparece como `/dev/rfcomm0`. Você pode forçar a criação desse link com:
+
+```bash
+sudo rfcomm bind /dev/rfcomm0 00:1D:A5:68:98:8B
+```
+
+3️⃣ **Teste a comunicação**
+
+Use um programa como `minicom` ou `screen` para testar a comunicação:
+
+```bash
+sudo apt install minicom
+minicom -b 38400 -o -D /dev/rfcomm0
+```
+
+4️⃣ **Configure sua aplicação para usar o OBD-II**
+
+No código Python, aponte a biblioteca OBD (como `python-OBD`) para a porta:
+
+```python
+import obd
+connection = obd.OBD('/dev/rfcomm0')
+```
+ > Você pode executar o notebook [obd_connection.ipynb](./obd_connection.ipynb)
+
+### 🚀 Passo final
 
 - Carregue o código no Raspberry Pi, execute:
 
