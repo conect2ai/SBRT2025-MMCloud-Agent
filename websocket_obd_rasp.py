@@ -2,6 +2,7 @@ import csv
 import os
 import time
 import joblib
+import datetime
 import threading
 import asyncio
 import json
@@ -46,7 +47,7 @@ csv_file = "obd_data.csv"
 data_to_send = {}
 
 # Mock flags
-test_mode = True
+test_mode = False
 mock_acc = True
 
 start_time = time.time()
@@ -69,7 +70,7 @@ def gerar_dados_mock():
         # Novos campos da interface TypeScript
         "bateria": random.uniform(12, 14),
         "temperaturaMotor": random.uniform(70, 105),
-        "tipoCombustivel": random.choice(["Gasolina", "Etanol", "Diesel"]),
+        "tipoCombustivel": random.choice(["gasolina", "etanol"]),
         "tipoVia": random.choice(["Urbana", "Rodovia"]),
         "bussola": random.choice(["N", "S", "L", "O"]),
         "co2": random.uniform(100, 300),
@@ -181,7 +182,7 @@ def identify_fuel_type(dados):
     elif "ethanol_percentage" in dados:
         model = joblib.load("./models/ethanol_model_rf.pkl")
         X = [dados["ethanol_percentage"],
-             dados["speed"],
+             dados["velocidade"],
              dados["rpm"],
              dados["engine_load"],
              dados["throttle"],
@@ -189,6 +190,11 @@ def identify_fuel_type(dados):
         X = np.array(X).reshape(1, -1)
         fuel_type = model.predict(X)[0]
         prob = model.predict_proba(X)[0]
+
+        if fuel_type == 0:
+            fuel_type = "etanol"
+        else:
+            fuel_type = "gasolina"
         return fuel_type, prob
     # else:
     #     pass
@@ -196,7 +202,7 @@ def identify_fuel_type(dados):
         
 def identify_city_highway(dados):
     model = joblib.load("models/city_highway_rf.pkl")
-    X = [dados["speed"],
+    X = [dados["velocidade"],
          dados["rpm"],
          dados["engine_load"],
          dados["throttle"],
@@ -206,6 +212,11 @@ def identify_city_highway(dados):
     X = np.array(X).reshape(1, -1)
     city_highway = model.predict(X)[0]
     prob = model.predict_proba(X)[0]
+
+    if city_highway == 0:
+        city_highway = "Cidade"
+    else:
+        city_highway = "Rodovia"
     return city_highway, prob
 
 def calculate_emissions_maf_afr(dados):
@@ -218,7 +229,7 @@ def calculate_emissions_maf_afr(dados):
 
     # print(dados["co2_emission"])
     # calculate emission rate per km
-    dados["co2"] = convert_emission_rate(dados["co2_emission"], dados["speed"])
+    dados["co2"] = convert_emission_rate(dados["co2_emission"], dados["velocidade"])
 
     return dados
 
@@ -227,7 +238,7 @@ if not test_mode:
     import obd
     connection = obd.OBD()
     sensors = {
-        "speed": obd.commands.SPEED,
+        "velocidade": obd.commands.SPEED,
         "rpm": obd.commands.RPM,
         "engine_load": obd.commands.ENGINE_LOAD,
         "coolant_temp": obd.commands.COOLANT_TEMP,
@@ -235,7 +246,7 @@ if not test_mode:
         "intake_temp": obd.commands.INTAKE_TEMP,
         "maf": obd.commands.MAF,
         "throttle": obd.commands.THROTTLE_POS,
-        "fuel_level": obd.commands.FUEL_LEVEL,
+        "fuelLevel": obd.commands.FUEL_LEVEL,
         "ethanol_percentage": obd.commands.ETHANOL_PERCENT,
         "tempAmbiente": obd.commands.AMBIANT_AIR_TEMP,
         "bateria": obd.commands.CONTROL_MODULE_VOLTAGE,
@@ -250,7 +261,7 @@ def processar_dados(dados):
     # Soft-Sensor 1: Área do Radar
     dados["radar_area"] = calculate_radar_area({
         "rpm": dados["rpm"],
-        "speed": dados["speed"],
+        "speed": dados["velocidade"],
         "throttle": dados["throttle"],
         "engine_load": dados["engine_load"]
     })
@@ -280,6 +291,7 @@ def processar_dados(dados):
 
     # Análise de Comportamento do Motorista
     dados["driver_behavior"] = mmcloud.process_point([dados["radar_area"], dados["engine_load"]], 1)
+    dados["perfilMotorista"] = dados["driver_behavior"]
 
     # Define ECO automaticamente
     if dados["driver_behavior"] == "cautious":
@@ -288,18 +300,18 @@ def processar_dados(dados):
         dados["eco"] = False
 
     # Identificação do tipo de via
-    dados["city_highway"], dados["city_highway_prob"] = identify_city_highway(dados)
+    dados["tipoVia"], dados["tipoVia_prob"] = identify_city_highway(dados)
 
     # Cálculo de Emissões
     dados = calculate_emissions_maf_afr(dados)
 
     # Cálculo de Consumo Instantâneo
-    dados["instant_fuel_consumption"] = instant_fuel_consumption(dados["speed"], maf=dados["maf"], combustivel=dados["fuel_type"])
+    dados["instant_fuel_consumption"] = instant_fuel_consumption(dados["velocidade"], maf=dados["maf"], combustivel=dados["fuel_type"])
 
     # DISTÂNCIA ACUMULADA
-    if "distancia_total" not in dados:
-        dados["distancia_total"] = 0.0
-    dados["distancia_total"] += dados["speed"] / 3600
+    if "distancia" not in dados:
+        dados["distancia"] = 0.0
+    dados["distancia"] += dados["velocidade"] / 3600
 
     # CONSUMO MÉDIO
     if "consumo_total" not in dados:
@@ -310,7 +322,12 @@ def processar_dados(dados):
     dados["contagem_consumo"] += 1
     dados["consumo_medio"] = dados["consumo_total"] / dados["contagem_consumo"]
 
+    dados["consumo"] = dados["consumo_medio"]
+
     dados["bussola"] = calcular_heading(dados)
+
+    dados["notaImetro"] = "A"
+    dados["tempAmbiente"] = "28.5"
 
     return dados
 
@@ -326,32 +343,50 @@ def processar_dados(dados):
 
 def clean_value(value):
     if isinstance(value, str):
-        value = value.replace('\n', ' ').replace(',', ';').strip()
+        return value.replace('\n', ' ').replace(',', ';').strip()
+    if isinstance(value, (list, tuple, np.ndarray)):
+        return str(value)
     return value
 
 def save_data_to_csv(data, csv_file):
     print(data)
     file_exists = os.path.isfile(csv_file)
 
-    # Separa a resposta do modelo
-    model_response = clean_value(data.get('model_response', ''))
-    
-    # Remove a resposta do dicionário antes de gravar as outras colunas
-    data_no_response = {k: v for k, v in data.items() if k != 'model_response'}
-    
-    with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
+    # Adiciona timestamp
+    data['timestamp'] = datetime.datetime.now().isoformat()
 
-        # Garante a coluna model_response no cabeçalho
+    # Limpa os valores
+    cleaned_data = {k: clean_value(v) for k, v in data.items()}
+
+    # Colunas principais fixas
+    core_keys = [
+        'timestamp', 'velocidade', 'rpm', 'engine_load', 'coolant_temp', 'timing_advance', 'intake_temp',
+        'maf', 'throttle', 'fuelLevel', 'ethanol_percentage', 'tempAmbiente', 'bateria', 'temperaturaMotor',
+        'tempTotal', 'radar_area', 'accel_x', 'accel_y', 'accel_z', 'gyro_x', 'gyro_y', 'gyro_z', 
+        'accel_magnitude', 'latitude', 'longitude', 'teda_flag', 'fuel_type', 'fuel_type_prob',
+        'driver_behavior', 'perfilMotorista', 'eco', 'tipoVia', 'tipoVia_prob', 'co2_emission', 'co2',
+        'instant_fuel_consumption', 'distancia', 'consumo_total', 'contagem_consumo', 'consumo_medio',
+        'consumo', 'bussola', 'notaImetro', 'model_response'
+    ]
+
+    # Detecta colunas extras dinamicamente (ex.: periodica_* e outlier_*)
+    extra_keys = [k for k in cleaned_data.keys() if k not in core_keys]
+    
+    # Concatena tudo mantendo ordem + extras no final
+    all_keys = core_keys + extra_keys
+
+    # Remove duplicados preservando ordem
+    seen = set()
+    fieldnames = [k for k in all_keys if not (k in seen or seen.add(k))]
+
+    # Escreve no arquivo
+    with open(csv_file, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+
         if not file_exists:
-            headers = list(data_no_response.keys()) + ['model_response']
-            writer.writerow(headers)
+            writer.writeheader()
         
-        # Limpa os valores e adiciona a resposta como última coluna
-        cleaned_values = [clean_value(v) for v in data_no_response.values()]
-        cleaned_values.append(model_response)
-        
-        writer.writerow(cleaned_values)
+        writer.writerow(cleaned_data)
 
 # Coleta dos dados
 def clean_data_for_json(obj, seen=None):
